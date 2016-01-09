@@ -13,6 +13,7 @@
 
 
 import json
+import socket
 import optparse
 
 try:
@@ -27,6 +28,8 @@ all_venues = dict()         # dict: venue string ---> dict: stock string ---> Or
 current_book_count = 0
 
 auth = dict()
+udp_socket = None
+udp_port = None
 
 
 # ----------------------------------------------------------------------------------------
@@ -311,6 +314,7 @@ def cancel(venue, symbol, id):
 
         ret = all_venues[venue][symbol].cancel_order(id)
         assert(ret)
+        send_udp_ticker(venue, symbol)
         return ret
         
     except Exception as e:
@@ -383,6 +387,7 @@ def make_order(venue, symbol):
 
         try:
             ret = all_venues[venue][symbol].parse_order(data)
+            send_udp_ticker(venue, symbol)
         except TypeError:
             response.status = 400
             return BAD_TYPE
@@ -479,6 +484,22 @@ def create_auth_records():
     with open(opts.accounts_file) as infile:
         auth = json.load(infile)
 
+def enable_udp_ticker(port):
+    global udp_socket
+    global udp_port
+    
+    udp_port = port
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
+    
+
+def send_udp_ticker(venue, symbol):
+    global udp_socket
+    global udp_port
+    
+    if not udp_socket:
+        return
+    data = json.dumps(all_venues[venue][symbol].get_quote())
+    udp_socket.sendto(bytes(data, "utf-8"), ("127.0.0.1", udp_port))
 
 def main():
     global opts
@@ -520,12 +541,23 @@ def main():
         help = "Port [default: %default]")
     opt_parser.set_defaults(port = 8000)
     
+    opt_parser.add_option(
+        "-t", "--ticker-port",
+        dest = "udp_port",
+        type = "int",
+        help = "Udp port to broadcast ticker information to [default: none]")
+    opt_parser.set_defaults(udp_port = None)
+    
     opts, __ = opt_parser.parse_args()
     
     create_book_if_needed(opts.default_venue, opts.default_symbol)
     
     if opts.accounts_file:
         create_auth_records()
+    
+    if opts.udp_port:
+        print("Enabling UDP ticker output on port %s" % opts.udp_port)
+        enable_udp_ticker(opts.udp_port)
     
     print("disorderBook starting up...\n")
     if not auth:
