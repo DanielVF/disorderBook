@@ -558,7 +558,8 @@ def main():
         type = "int",
         help = "Udp port to broadcast ticker information to [default: none]")
     opt_parser.set_defaults(udp_port = None)
-
+    
+    opt_parser.add_option(
         "-e", "--extra",
         dest   = "extra",
         action = "store_true",
